@@ -22,20 +22,44 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Clone upstream repository
-        run: |
-          rm -rf /tmp/upstream
-          git clone --depth=1 https://github.com/Yu9191/Rewrite.git /tmp/upstream
-
-      - name: Sync upstream files
+      - name: Select backup source
+        id: source
         shell: bash
         run: |
+          rm -rf /tmp/upstream /tmp/seed
+
+          if git clone --depth=1 https://github.com/Yu9191/Rewrite.git /tmp/upstream; then
+            echo "path=/tmp/upstream" >> "$GITHUB_OUTPUT"
+            echo "kind=upstream" >> "$GITHUB_OUTPUT"
+            git -C /tmp/upstream rev-parse HEAD > /tmp/source-commit
+            exit 0
+          fi
+
+          if [ -f .upstream-commit ]; then
+            echo "Upstream Yu9191/Rewrite is unavailable; preserving the existing backup."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Upstream is unavailable. Seeding the first snapshot from wangyuyan666/QuanxBackup."
+          git clone --depth=1 https://github.com/wangyuyan666/QuanxBackup.git /tmp/seed
+          echo "path=/tmp/seed/Rewrite(Yu9191)" >> "$GITHUB_OUTPUT"
+          echo "kind=seed-from-QuanxBackup" >> "$GITHUB_OUTPUT"
+          git -C /tmp/seed rev-parse HEAD > /tmp/source-commit
+
+      - name: Sync files and rewrite raw self-references
+        if: steps.source.outputs.skip != 'true'
+        shell: bash
+        run: |
+          SOURCE="${{ steps.source.outputs.path }}"
+          SOURCE_KIND="${{ steps.source.outputs.kind }}"
+
           cp .github/workflows/sync-upstream.yml /tmp/sync-upstream.yml
 
           rsync -a --delete \
             --exclude='.git/' \
             --exclude='.github/workflows/sync-upstream.yml' \
-            /tmp/upstream/ ./
+            "$SOURCE/" ./
 
           mkdir -p .github/workflows
           cp /tmp/sync-upstream.yml .github/workflows/sync-upstream.yml
@@ -46,17 +70,23 @@ jobs:
           old = b"https://raw.githubusercontent.com/Yu9191/Rewrite"
           new = b"https://raw.githubusercontent.com/oyzg/RewriteBackup"
 
+          changed = 0
           for p in Path(".").rglob("*"):
               if not p.is_file() or ".git" in p.parts:
                   continue
               data = p.read_bytes()
               if old in data:
                   p.write_bytes(data.replace(old, new))
+                  changed += 1
+
+          print(f"Rewrote raw self-references in {changed} files.")
           PY
 
-          git -C /tmp/upstream rev-parse HEAD > .upstream-commit
+          cp /tmp/source-commit .upstream-commit
+          printf '%s\n' "$SOURCE_KIND" > .backup-source
 
       - name: Commit synced changes
+        if: steps.source.outputs.skip != 'true'
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
@@ -64,10 +94,11 @@ jobs:
 
           git add -A
           if git diff --cached --quiet; then
-            echo "No upstream changes."
+            echo "No source changes."
             exit 0
           fi
 
-          UPSTREAM_SHA="$(cat .upstream-commit)"
-          git commit -m "sync: Yu9191/Rewrite @ ${UPSTREAM_SHA:0:7}"
+          SOURCE_SHA="$(cat .upstream-commit)"
+          SOURCE_KIND="$(cat .backup-source)"
+          git commit -m "sync: ${SOURCE_KIND} @ ${SOURCE_SHA:0:7}"
           git push
