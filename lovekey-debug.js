@@ -1,8 +1,21 @@
-/*
- * Lovekey 1.9.0 diagnostic logger for Quantumult X
- * Logs metadata/JSON shape only. Does not modify requests or responses.
- * Sensitive headers and body values are intentionally not logged.
- */
+/**
+ App: Lovekey 1.9 Diagnostic
+ Purpose: Quantumult X temporary diagnostics only.
+ Logs URL/status/JSON shape. Does not modify traffic or print credentials.
+
+[rewrite_local]
+# Lovekey 1.9 account endpoint
+^https:\/\/sea\.api\.lovekeyboard\.com\/v1\/device\/account\/vip2(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/oyzg/RewriteBackup/refs/heads/main/lovekey-debug.js
+
+# Lovekey 1.9 chat endpoint - request
+^https:\/\/sea\.api\.lovekeyboard\.com\/v1\/device\/bnh-stream-msg(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/oyzg/RewriteBackup/refs/heads/main/lovekey-debug.js
+
+# Lovekey 1.9 chat endpoint - response
+^https:\/\/sea\.api\.lovekeyboard\.com\/v1\/device\/bnh-stream-msg(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/oyzg/RewriteBackup/refs/heads/main/lovekey-debug.js
+
+[mitm]
+hostname = sea.api.lovekeyboard.com
+**/
 
 const TAG = "[Lovekey 1.9 Debug]";
 const url = ($request && $request.url) || "";
