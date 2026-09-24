@@ -1,0 +1,73 @@
+name: Sync Yu9191 Rewrite
+
+on:
+  push:
+    paths:
+      - ".github/workflows/sync-upstream.yml"
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout backup repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone upstream repository
+        run: |
+          rm -rf /tmp/upstream
+          git clone --depth=1 https://github.com/Yu9191/Rewrite.git /tmp/upstream
+
+      - name: Sync upstream files
+        shell: bash
+        run: |
+          cp .github/workflows/sync-upstream.yml /tmp/sync-upstream.yml
+
+          rsync -a --delete \
+            --exclude='.git/' \
+            --exclude='.github/workflows/sync-upstream.yml' \
+            /tmp/upstream/ ./
+
+          mkdir -p .github/workflows
+          cp /tmp/sync-upstream.yml .github/workflows/sync-upstream.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          old = b"https://raw.githubusercontent.com/Yu9191/Rewrite"
+          new = b"https://raw.githubusercontent.com/oyzg/RewriteBackup"
+
+          for p in Path(".").rglob("*"):
+              if not p.is_file() or ".git" in p.parts:
+                  continue
+              data = p.read_bytes()
+              if old in data:
+                  p.write_bytes(data.replace(old, new))
+          PY
+
+          git -C /tmp/upstream rev-parse HEAD > .upstream-commit
+
+      - name: Commit synced changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No upstream changes."
+            exit 0
+          fi
+
+          UPSTREAM_SHA="$(cat .upstream-commit)"
+          git commit -m "sync: Yu9191/Rewrite @ ${UPSTREAM_SHA:0:7}"
+          git push
