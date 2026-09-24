@@ -54,6 +54,14 @@ try {
       try {
         const parsed = JSON.parse(body);
         log("json-shape=" + describe(parsed, 0));
+        if (/\/v1\/device\/bnh-stream-msg(?:\?|$)/i.test(url)) {
+          const code = Object.prototype.hasOwnProperty.call(parsed, "code") ? parsed.code : "missing";
+          const message = Object.prototype.hasOwnProperty.call(parsed, "message") ? String(parsed.message) : "missing";
+          const dataKeys = parsed && parsed.data && typeof parsed.data === "object"
+            ? Object.keys(parsed.data)
+            : [];
+          log("chat-result code=" + code + " message=" + JSON.stringify(message) + " data-keys=" + JSON.stringify(dataKeys));
+        }
       } catch (_) {
         log("body-type=non-json");
       }
